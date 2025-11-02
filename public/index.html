@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🔋 EV Battery Monitor</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1>⚡ EV Battery Monitor</h1>
+        <p class="subtitle">Real-time IoT Battery Monitoring System</p>
+      </header>
+
+      <div class="main-content">
+        <!-- Left Column: Battery Visualization -->
+        <div class="left-column">
+          <div class="battery-section">
+            <div class="battery-visual">
+              <svg width="240" height="120" viewBox="0 0 240 120">
+                <defs>
+                  <linearGradient
+                    id="batteryGradient"
+                    x1="0%"
+                    y1="0%"
+                    x2="0%"
+                    y2="100%"
+                  >
+                    <stop
+                      offset="0%"
+                      style="stop-color: #f0f0f0; stop-opacity: 1"
+                    />
+                    <stop
+                      offset="100%"
+                      style="stop-color: #e0e0e0; stop-opacity: 1"
+                    />
+                  </linearGradient>
+                </defs>
+
+                <!-- Battery Body -->
+                <rect
+                  x="20"
+                  y="30"
+                  width="190"
+                  height="60"
+                  fill="url(#batteryGradient)"
+                  stroke="#333"
+                  stroke-width="3"
+                  rx="10"
+                />
+
+                <!-- Battery Terminal -->
+                <rect
+                  x="210"
+                  y="45"
+                  width="12"
+                  height="30"
+                  fill="#333"
+                  rx="4"
+                />
+
+                <!-- Battery Fill -->
+                <rect
+                  id="battery-fill"
+                  x="25"
+                  y="35"
+                  width="0"
+                  height="50"
+                  fill="#4caf50"
+                  rx="7"
+                />
+
+                <!-- SOC Text -->
+                <text
+                  id="soc-text"
+                  x="115"
+                  y="65"
+                  text-anchor="middle"
+                  font-size="24"
+                  font-weight="bold"
+                  fill="#333"
+                >
+                  0%
+                </text>
+              </svg>
+            </div>
+            <div class="soc-display">
+              <div class="soc-label">State of Charge</div>
+              <div class="soc-value"><span id="soc-large">--</span>%</div>
+            </div>
+
+            <div class="charging-status" id="charging-status">
+              <span class="status-icon">⚡</span>
+              <span class="status-text">--</span>
+            </div>
+          </div>
+
+          <!-- Mode Selection -->
+          <div class="mode-section">
+            <div class="mode-header">
+              <h3>⚙️ Performance Mode</h3>
+              <p>Select your driving style</p>
+            </div>
+            <div class="mode-buttons">
+              <button
+                class="mode-btn active"
+                id="eco-btn"
+                onclick="setMode('eco')"
+              >
+                <span class="mode-icon">🌿</span>
+                <span class="mode-name">ECO MODE</span>
+                <span class="mode-desc">Energy Efficient</span>
+              </button>
+              <button
+                class="mode-btn"
+                id="sport-btn"
+                onclick="setMode('sport')"
+              >
+                <span class="mode-icon">🏎️</span>
+                <span class="mode-name">SPORT MODE</span>
+                <span class="mode-desc">High Performance</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Metrics -->
+        <div class="right-column">
+          <div class="metrics-grid">
+            <!-- Voltage -->
+            <div class="metric-card">
+              <div class="metric-icon">⚡</div>
+              <div class="metric-label">Voltage</div>
+              <div class="metric-value">
+                <span id="voltage">--</span>
+                <span class="metric-unit">V</span>
+              </div>
+            </div>
+            <!-- Current -->
+            <div class="metric-card">
+              <div class="metric-icon">🔌</div>
+              <div class="metric-label">Current</div>
+              <div class="metric-value">
+                <span id="current">--</span>
+                <span class="metric-unit">A</span>
+              </div>
+            </div>
+
+            <!-- Temperature -->
+            <div class="metric-card">
+              <div class="metric-icon">🌡️</div>
+              <div class="metric-label">Temperature</div>
+              <div class="metric-value">
+                <span id="temperature">--</span>
+                <span class="metric-unit">°C</span>
+              </div>
+            </div>
+
+            <!-- SOH -->
+            <div class="metric-card">
+              <div class="metric-icon">💪</div>
+              <div class="metric-label">State of Health</div>
+              <div class="metric-value">
+                <span id="soh">--</span>
+                <span class="metric-unit">%</span>
+              </div>
+            </div>
+
+            <!-- Range -->
+            <div class="metric-card highlight">
+              <div class="metric-icon">🛣️</div>
+              <div class="metric-label">Estimated Range</div>
+              <div class="metric-value">
+                <span id="range">--</span>
+                <span class="metric-unit">km</span>
+              </div>
+            </div>
+
+            <!-- Current Mode -->
+            <div class="metric-card highlight">
+              <div class="metric-icon">⚙️</div>
+              <div class="metric-label">Active Mode</div>
+              <div class="metric-value mode-display">
+                <span id="current-mode">ECO</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status Bar -->
+          <div class="status-bar" id="status-bar">
+            <span class="status-icon">🔄</span>
+            <span class="status-message">Initializing...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
