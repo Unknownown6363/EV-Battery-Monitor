@@ -43,149 +43,103 @@ const THINGSPEAK_READ_URL = `https://api.thingspeak.com/channels/${THINGSPEAK_CH
 const THINGSPEAK_WRITE_URL = "https://api.thingspeak.com/update";
 
 // ============================================
+// YOUR BATTERY PARAMETERS & STATE VARIABLES
+// ============================================
+const BATTERY_CAPACITY = 2000.0; // mAh - CHANGE THIS to your battery
+const NOMINAL_VOLTAGE = 3.7; // V - Nominal voltage
+const MAX_VOLTAGE = 4.2; // V - Fully charged
+const MIN_VOLTAGE = 3.0; // V - Empty battery
+
+// State variables for Coulomb Counting (YOUR INITIALIZATIONS)
+let totalCurrent_mAh = 0.0;
+let initialCapacity = BATTERY_CAPACITY;
+let consumedCapacity = 0.0;
+let lastUpdateTime = Date.now();
+let isCharging = false;
+let previousCurrent = 0.0;
+
+// ============================================
 // HELPER FUNCTIONS - CALCULATIONS
-// Improved Formula Method for 3.7V 2000mAh Li-ion
 // ============================================
 
 /**
- * Calculate State of Charge (SOC) - Improved Piece-wise Formula
- * More accurate than linear - accounts for Li-ion discharge curve
+ * Calculate SOC using YOUR Coulomb Counting Method
  */
-function calculateSOC(voltage) {
-  const V_MIN = 3.0; // Empty battery
-  const V_MAX = 4.2; // Full battery
-  const V_NOMINAL = 3.7; // Nominal voltage
+function calculateSOC(current_mA, voltage) {
+  const currentTime = Date.now();
+  const deltaTime_h = (currentTime - lastUpdateTime) / 3600000.0; // ms to hours
 
-  let soc = 0;
+  if (deltaTime_h > 0) {
+    const deltaCapacity_mAh = current_mA * deltaTime_h;
+    totalCurrent_mAh += deltaCapacity_mAh;
 
-  // Piece-wise linear approximation
-  // Li-ion has different slopes at different voltage ranges
+    if (current_mA > 0) {
+      // Discharging (positive current)
+      consumedCapacity += deltaCapacity_mAh;
+      isCharging = false;
+    } else {
+      // Charging (negative current)
+      isCharging = true;
+    }
 
-  if (voltage >= 4.2) {
-    // Fully charged (100%)
-    soc = 100;
-  } else if (voltage >= 4.0) {
-    // 80-100% range (steep slope during final charging)
-    // Formula: SOC = 80 + (V - 4.0) / (4.2 - 4.0) × 20
-    soc = 80 + ((voltage - 4.0) / (4.2 - 4.0)) * 20;
-  } else if (voltage >= 3.7) {
-    // 40-80% range (flat slope - most stable region)
-    // Formula: SOC = 40 + (V - 3.7) / (4.0 - 3.7) × 40
-    soc = 40 + ((voltage - 3.7) / (4.0 - 3.7)) * 40;
-  } else if (voltage >= 3.4) {
-    // 10-40% range (moderate slope)
-    // Formula: SOC = 10 + (V - 3.4) / (3.7 - 3.4) × 30
-    soc = 10 + ((voltage - 3.4) / (3.7 - 3.4)) * 30;
-  } else if (voltage >= 3.0) {
-    // 0-10% range (steep drop - critical low)
-    // Formula: SOC = 0 + (V - 3.0) / (3.4 - 3.0) × 10
-    soc = 0 + ((voltage - 3.0) / (3.4 - 3.0)) * 10;
-  } else {
-    // Below minimum voltage (0%)
-    soc = 0;
+    lastUpdateTime = currentTime;
   }
 
-  // Ensure SOC is between 0-100%
-  return Math.max(0, Math.min(100, soc));
+  const remainingCapacity = BATTERY_CAPACITY - consumedCapacity;
+  let soc = (remainingCapacity / BATTERY_CAPACITY) * 100.0;
+
+  // Clamp between 0-100
+  if (soc > 100.0) soc = 100.0;
+  if (soc < 0.0) soc = 0.0;
+
+  console.log(
+    `📊 SOC Calculation: ${soc.toFixed(
+      2
+    )}% (Consumed: ${consumedCapacity.toFixed(2)} mAh)`
+  );
+
+  return soc;
 }
 
 /**
  * Calculate State of Health (SOH) - Formula Based
  * Estimates battery health based on voltage behavior and conditions
  */
-function calculateSOH(voltage, current, temperature) {
-  // Start with 100% health
-  let totalDegradation = 0;
+/**
+ * Calculate SOH using YOUR formula (voltage + temperature factors)
+ */
+function calculateSOH(voltage, temperature) {
+  let voltageFactor = 1.0;
+  let temperatureFactor = 1.0;
 
-  // ==========================================
-  // FACTOR 1: Voltage Sag Under Load
-  // ==========================================
-  // Healthy battery maintains voltage better when current flows
-
-  if (Math.abs(current) > 0) {
-    // Expected voltage drop: ~0.1V per Amp is normal for healthy battery
-    const expectedVoltageDrop = Math.abs(current) * 0.1;
-    const expectedVoltage = 3.7 - expectedVoltageDrop;
-
-    // Check if actual voltage is lower than expected
-    if (voltage < expectedVoltage - 0.2) {
-      totalDegradation += 10; // High internal resistance
-    } else if (voltage < expectedVoltage - 0.1) {
-      totalDegradation += 5; // Moderate internal resistance
-    }
+  // Voltage-based degradation factor
+  if (voltage < MIN_VOLTAGE + 0.2) {
+    voltageFactor = 0.8; // Critical low voltage
+  } else if (voltage < NOMINAL_VOLTAGE) {
+    voltageFactor = 0.9; // Below nominal voltage
   }
 
-  // ==========================================
-  // FACTOR 2: Temperature Impact
-  // ==========================================
-  // Optimal: 20-40°C
-  // High temp accelerates degradation
-  // Low temp reduces performance
-
-  if (temperature > 60) {
-    totalDegradation += 15; // Critical - severe damage risk
-  } else if (temperature > 50) {
-    totalDegradation += 10; // Very high - rapid aging
-  } else if (temperature > 40) {
-    totalDegradation += 5; // High - accelerated aging
-  } else if (temperature < 0) {
-    totalDegradation += 8; // Freezing - lithium plating risk
-  } else if (temperature < 10) {
-    totalDegradation += 3; // Cold - reduced capacity
-  }
-  // 20-40°C = optimal range (no penalty)
-
-  // ==========================================
-  // FACTOR 3: Deep Discharge Stress
-  // ==========================================
-  // Li-ion should not be discharged below 3.0V
-
-  if (voltage < 3.0) {
-    totalDegradation += 20; // Critical - permanent damage
-  } else if (voltage < 3.2) {
-    totalDegradation += 10; // Deep discharge - accelerated aging
-  } else if (voltage < 3.4) {
-    totalDegradation += 3; // Low voltage stress
+  // Temperature-based degradation factor
+  if (temperature > 45.0 || temperature < 0.0) {
+    temperatureFactor = 0.85; // Extreme temperature
+  } else if (temperature > 35.0 || temperature < 10.0) {
+    temperatureFactor = 0.95; // Non-optimal temperature
   }
 
-  // ==========================================
-  // FACTOR 4: High Discharge Rate (C-Rate)
-  // ==========================================
-  // C-Rate = Current / Capacity
-  // 2000mAh = 2Ah, so 1C = 2A
+  let soh = voltageFactor * temperatureFactor * 100.0;
 
-  const BATTERY_CAPACITY = 2.0; // 2Ah
-  const cRate = Math.abs(current) / BATTERY_CAPACITY;
+  // Clamp between 0-100
+  if (soh > 100.0) soh = 100.0;
+  if (soh < 0.0) soh = 0.0;
 
-  if (cRate > 2.0) {
-    totalDegradation += 8; // > 2C (>4A) - very high stress
-  } else if (cRate > 1.5) {
-    totalDegradation += 5; // > 1.5C (>3A) - high stress
-  } else if (cRate > 1.0) {
-    totalDegradation += 2; // > 1C (>2A) - moderate stress
-  }
-  // < 1C = normal discharge rate (no penalty)
+  console.log(
+    `💪 SOH Calculation: ${soh.toFixed(
+      2
+    )}% (V-Factor: ${voltageFactor}, T-Factor: ${temperatureFactor})`
+  );
 
-  // ==========================================
-  // FACTOR 5: Overcharge Protection
-  // ==========================================
-  // Li-ion should not exceed 4.2V
-
-  if (voltage > 4.25) {
-    totalDegradation += 15; // Dangerous overcharge
-  } else if (voltage > 4.22) {
-    totalDegradation += 5; // Slight overcharge
-  }
-
-  // ==========================================
-  // Calculate Final SOH
-  // ==========================================
-  let soh = 100 - totalDegradation;
-
-  // Ensure SOH is between 0-100%
-  return Math.max(0, Math.min(100, soh));
+  return soh;
 }
-
 /**
  * Calculate Runtime in hours
  * Formula: Runtime = (Available Capacity) / Current / Efficiency
@@ -271,13 +225,12 @@ app.get("/api/data", async (req, res) => {
     const temperature = parseFloat(data.field3) || 0;
     const chargingStatus = parseInt(data.field4) || 0;
 
-    // Calculate derived values using improved formulas
-    const soc = calculateSOC(voltage);
-    const soh = calculateSOH(voltage, current, temperature);
-    const runtime = calculateRuntime(soc, current);
-    const range = calculateRange(soc, current);
-    const power = calculatePower(voltage, current);
-    const energy = calculateEnergy(voltage, soc);
+    // Convert current from A to mA for YOUR formula
+    const current_mA = current * 1000;
+
+    // Calculate derived values using YOUR formulas
+    const soc = calculateSOC(current_mA, voltage);
+    const soh = calculateSOH(voltage, temperature);
 
     // Prepare response with all metrics
     const batteryData = {
@@ -368,6 +321,38 @@ app.post("/api/mode", async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to set mode",
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/reset-soc
+ * Reset SOC counters when battery is fully charged
+ * Body: { soc: 100 } (optional, defaults to 100)
+ */
+app.post("/api/reset-soc", (req, res) => {
+  try {
+    const { soc } = req.body;
+    const resetSOC = soc || 100;
+
+    // Reset counters
+    totalCurrent_mAh = 0.0;
+    consumedCapacity = ((100 - resetSOC) / 100) * BATTERY_CAPACITY;
+    lastUpdateTime = Date.now();
+
+    console.log(`🔄 SOC Reset to ${resetSOC}%`);
+
+    res.json({
+      success: true,
+      message: `SOC reset to ${resetSOC}%`,
+      consumedCapacity: consumedCapacity.toFixed(2),
+    });
+  } catch (error) {
+    console.error("❌ Error resetting SOC:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to reset SOC",
       message: error.message,
     });
   }
